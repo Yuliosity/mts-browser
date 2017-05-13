@@ -4,15 +4,17 @@ module Main where
 
 import Control.Monad
 import Control.Monad.IO.Class (liftIO)
+import Data.Maybe (catMaybes)
 import Data.String (fromString)
+import qualified Data.Text.Lazy as T
 import Prelude hiding (head, div, id)
 import System.Directory
 import System.Environment (getArgs)
-import Web.Scotty
-import qualified Data.Text.Lazy as T
+
 import Text.Blaze.Html5 hiding (html, param, style, main, map)
 import Text.Blaze.Html5.Attributes hiding (form, title, label)
 import Text.Blaze.Html.Renderer.Text (renderHtml)
+import Web.Scotty
 
 data ProjectData = ProjectData
     { dataDesc :: !T.Text
@@ -54,21 +56,33 @@ filterDir = filter (\dir -> dir /= "." && dir /= "..")
 
 isLockedState :: FilePath -> IO Bool
 isLockedState path = do
-    hasDir <- doesDirectoryExist (path ++ "/.snakemake/locks")
+    let lockDir = path ++ "/.snakemake/locks"
+    hasDir <- doesDirectoryExist lockDir
     if hasDir
-        then (not . null . filterDir) `liftM` getDirectoryContents (path ++ "/.snakemake/locks")
+        then (not . null . filterDir) `liftM` getDirectoryContents lockDir
         else return False
+
+statsDir :: FilePath
+statsDir = "/stats/summary/"
 
 getProjectInfo :: FilePath -> ProjectName -> IO ProjectInfo
 getProjectInfo dir name = do
     let path = dir ++ T.unpack name
     locked <- isLockedState path
     let state = if locked then InProgress else Done --TODO: detect errors
-    reassemblyTableExists <- doesFileExist (path ++ "/stats/summary/gf_reassembly.tsv")
-    --TODO: other stats
-    let stats = if reassemblyTableExists
-        then [ProjectData "Reassembly GF" (name `T.append` "/gf_reassembly.tsv")]
-        else []
+    let lookupStats :: FilePath -> T.Text -> IO (Maybe ProjectData)
+        lookupStats filename title = do
+            file <- doesFileExist (path ++ statsDir ++ filename)
+            if file
+                then return $ Just $ ProjectData title (name `T.append` T.pack ('/':filename))
+                else return Nothing
+    stats <- catMaybes `liftM` mapM (uncurry lookupStats)
+        [ ("Post-propagation GF", "gf_bin_prop.tsv")
+        , ("Reassembly GF", "gf_reassembly.tsv")
+        , ("GF heatmap", "gf_heatmap.png")
+        , ("PCA plot", "pca.png")
+        , ("Bad assemblies report", "bad_report.txt")
+        ]
     return $ ProjectInfo name state stats
 
 collectInfo :: FilePath -> [ProjectName] -> IO [ProjectInfo]
@@ -84,4 +98,4 @@ main = do
         get "/:project/:file" $ do
             project <- param "project"
             filename <- param "file"
-            file $ dir ++ project ++ "/stats/summary/" ++ filename
+            file $ dir ++ project ++ statsDir ++ filename
