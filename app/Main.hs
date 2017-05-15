@@ -70,8 +70,8 @@ getProjectInfo dir name = do
     let path = dir ++ T.unpack name
     locked <- isLockedState path
     let state = if locked then InProgress else Done --TODO: detect errors
-    let lookupStats :: FilePath -> T.Text -> IO (Maybe ProjectData)
-        lookupStats filename title = do
+    let lookupStats :: T.Text -> FilePath -> IO (Maybe ProjectData)
+        lookupStats title filename = do
             file <- doesFileExist (path ++ statsDir ++ filename)
             if file
                 then return $ Just $ ProjectData title (name `T.append` T.pack ('/':filename))
@@ -79,9 +79,10 @@ getProjectInfo dir name = do
     stats <- catMaybes `liftM` mapM (uncurry lookupStats)
         [ ("Post-propagation GF", "gf_bin_prop.tsv")
         , ("Reassembly GF", "gf_reassembly.tsv")
-        , ("GF heatmap", "gf_heatmap.png")
-        , ("PCA plot", "pca.png")
-        , ("Bad assemblies report", "bad_report.txt")
+        , ("GF heatmap", "reassembly_gf.png")
+        , ("GF heatmap (bad bins only)", "reassembly_bad.png")
+        , ("Reassembly PCA plot", "pca_reassembly.png")
+        , ("Bad assemblies report", "reassembly_problems.txt")
         ]
     return $ ProjectInfo name state stats
 
